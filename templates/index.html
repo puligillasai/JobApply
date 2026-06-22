@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌐 DevOps Agent - Live Job Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header class="navbar">
+        <h1>🚀 Agent Live Feed</h1>
+        <h2>Elite Roles Filtered: SRE/Cloud/DevOps (USA)</h2>
+    </header>
+
+    <div class="container">
+        
+        <!-- INPUT/SEARCH CONTROLS (Where the user tells the agent what to search for) -->
+        <aside class="search-panel">
+            <h3>⚙️ Search Parameters</h3>
+            <div class="parameter-group">
+                <h4>Target Roles</h4>
+                <ul class="role-tags">
+                    <li>DevOps Engineer</li>
+                    <li>SRE / Site Reliability</li>
+                    <li>Cloud/Observability Expert</li>
+                </ul>
+            </div>
+
+            <div class="parameter-group">
+                <h4>Critical Filters Applied</h4>
+                <ul class="filter-list">
+                    <li>📍 Location: United States (USA)</li>
+                    <li>⏱️ Timeframe: Last 24 Hours</li>
+                    <li class="high-priority">🛂 Visa Sponsorship Signal Found</li>
+                    <li>⛔️ Exclusions: No Security Clearance Required</li>
+                </ul>
+            </div>
+
+            <button id="runSearchBtn" class="btn primary">🔍 Run Advanced Search</button>
+            <p class="small-text">*Note: This button triggers the backend scraping/filtering service.</p>
+        </aside>
+
+        <!-- OUTPUT/REPORT AREA (Where the results land) -->
+        <main class="report-area">
+            <h1>🔍 Current Agent Report</h1>
+
+            <!-- This is where the results dynamically load -->
+            <div id="resultsContainer" class="result-list">
+                <!-- EXAMPLE CARD 1 (High Confidence Match) -->
+                <div class="job-card high-confidence">
+                    <span class="status-tag">⭐ High Confidence Match</span>
+                    <h3>Senior SRE - Cloud Infrastructure</h3>
+                    <p class="company-tag">Innovatech Global</p>
+                    <div class="details">
+                        <p><strong>📅 Posted:</strong> Today (5 hours ago)</p>
+                        <p class="short-desc">Seeking talent. We are actively sponsoring H1B visas and offer generous relocation for international candidates.</p>
+                        <a href="#" class="btn secondary">View Full Profile &rarr;</a>
+                    </div>
+                </div>
+
+                 <!-- EXAMPLE CARD 2 (Medium Confidence Match) -->
+                <div class="job-card medium-confidence">
+                    <span class="status-tag">🟡 Medium Confidence Match</span>
+                    <h3>Cloud Operations Engineer</h3>
+                    <p class="company-tag">ScaleUp SaaS Inc.</p>
+                    <div class="details">
+                        <p><strong>📅 Posted:</strong> Yesterday (12 hours ago)</p>
+                        <p class="short-desc">Join our growing team focused on Observability and scaling our commercial product line.</p>
+                        <a href="#" class="btn secondary">View Full Profile &rarr;</a>
+                    </div>
+                </div>
+
+            </div>
+
+            <p id="noResultsMessage" class="hidden-message">
+                😔 No perfect matches found in the last 24 hours. Try relaxing one filter or setting alerts for tomorrow!
+            </p>
+
+        </main>
+    </div>
+
+    <footer>&copy; 2024 Agent Tracker | Powered by Advanced Filtering Logic</footer>
+    <script src="script.js"></script>
+</body>
+</html>

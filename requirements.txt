@@ -1,0 +1,10 @@
+# Core Web Framework
+Flask==3.0.3 
+
+# Networking/Scraping (needed to fetch the job boards)
+requests==2.31.0 
+
+# HTML Parsing (needed if you are scraping the page content)
+beautifulsoup4==4.12.2 
+
+# Add any other tools your agent uses (e.g., watchdog if you are monitoring files)
