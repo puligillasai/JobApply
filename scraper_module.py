@@ -5,6 +5,9 @@ from bs4 import BeautifulSoup
 from typing import List, Dict
 import re
 from difflib import SequenceMatcher
+import asyncio
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+import time
 
 # Target roles for filtering
 TARGET_ROLES = ['devops', 'sre', 'site reliability', 'cloud engineer', 'cloud operations', 
@@ -113,295 +116,472 @@ def fetch_linkedin_jobs(query: str = "DevOps Engineer") -> List[Dict]:
     
     return jobs
 
-def fetch_glassdoor_jobs(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
-    """Scrape jobs from Glassdoor"""
+async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
+    """Scrape jobs from Glassdoor using Playwright for JavaScript-rendered content"""
     jobs = []
     try:
-        url = f"https://www.glassdoor.com/Job/{query.replace(' ', '-')}-jobs-SRCH_KO0,14.htm?location={location}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            job_cards = soup.find_all('li', class_='react-job-listing')
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
             
-            for card in job_cards[:20]:
-                try:
-                    title_elem = card.find('a', class_='jobLink')
-                    company_elem = card.find('span', class_='css-2x5zq0')
-                    location_elem = card.find('span', class_='css-1buaf54')
-                    
-                    if title_elem:
-                        title = title_elem.get_text(strip=True)
-                        company = company_elem.get_text(strip=True) if company_elem else "Unknown"
-                        location = location_elem.get_text(strip=True) if location_elem else "Unknown"
-                        link = "https://www.glassdoor.com" + title_elem['href'] if title_elem.get('href') else "#"
+            url = f"https://www.glassdoor.com/Job/{query.replace(' ', '-')}-jobs-SRCH_KO0,14.htm?location={location}"
+            
+            try:
+                await page.goto(url, timeout=30000, wait_until='networkidle')
+                await page.wait_for_timeout(3000)  # Wait for dynamic content
+                
+                # Try multiple selectors for Glassdoor
+                job_selectors = [
+                    'li.react-job-listing',
+                    'div.jobCard',
+                    '[data-test="job-tile"]',
+                    'div[data-testid="job-tile"]'
+                ]
+                
+                job_cards = []
+                for selector in job_selectors:
+                    try:
+                        cards = await page.query_selector_all(selector)
+                        if cards:
+                            job_cards = cards
+                            break
+                    except:
+                        continue
+                
+                for card in job_cards[:15]:
+                    try:
+                        # Try to extract job details
+                        title_elem = await card.query_selector('a.jobLink, h2, h3, [data-test="job-title"]')
+                        company_elem = await card.query_selector('span.css-2x5zq0, [data-test="company-name"]')
+                        location_elem = await card.query_selector('span.css-1buaf54, [data-test="location"]')
                         
-                        jobs.append({
-                            'title': title,
-                            'company': company,
-                            'location': location,
-                            'url': link,
-                            'posted_date': datetime.datetime.now(),
-                            'source': 'Glassdoor'
-                        })
-                except Exception as e:
-                    print(f"Error parsing Glassdoor job card: {e}")
-                    continue
+                        if title_elem:
+                            title = await title_elem.inner_text()
+                            company = await company_elem.inner_text() if company_elem else "Unknown"
+                            job_location = await location_elem.inner_text() if location_elem else "Unknown"
+                            
+                            link_elem = await card.query_selector('a')
+                            link = await link_elem.get_attribute('href') if link_elem else "#"
+                            if link and not link.startswith('http'):
+                                link = "https://www.glassdoor.com" + link
+                            
+                            jobs.append({
+                                'title': title.strip(),
+                                'company': company.strip(),
+                                'location': job_location.strip(),
+                                'url': link,
+                                'posted_date': datetime.datetime.now(),
+                                'source': 'Glassdoor'
+                            })
+                    except Exception as e:
+                        print(f"Error parsing Glassdoor job card: {e}")
+                        continue
+                        
+            except PlaywrightTimeoutError:
+                print(f"Timeout loading Glassdoor page")
+            except Exception as e:
+                print(f"Error navigating to Glassdoor: {e}")
+            finally:
+                await browser.close()
+                
     except Exception as e:
-        print(f"Error scraping Glassdoor: {e}")
+        print(f"Error in Glassdoor Playwright scraper: {e}")
     
     return jobs
 
-def fetch_builtin_jobs(query: str = "DevOps Engineer") -> List[Dict]:
-    """Scrape jobs from BuiltIn"""
+async def fetch_builtin_jobs_playwright(query: str = "DevOps Engineer") -> List[Dict]:
+    """Scrape jobs from BuiltIn using Playwright"""
     jobs = []
     try:
-        url = f"https://www.builtin.com/jobs?query={query.replace(' ', '%20')}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            job_cards = soup.find_all('div', class_='job-item')
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
             
-            for card in job_cards[:20]:
-                try:
-                    title_elem = card.find('h3', class_='job-title')
-                    company_elem = card.find('div', class_='company-name')
-                    location_elem = card.find('div', class_='location')
-                    link_elem = card.find('a', class_='job-link')
-                    
-                    if title_elem:
-                        title = title_elem.get_text(strip=True)
-                        company = company_elem.get_text(strip=True) if company_elem else "Unknown"
-                        location = location_elem.get_text(strip=True) if location_elem else "Unknown"
-                        link = link_elem['href'] if link_elem else "#"
+            url = f"https://www.builtin.com/jobs?query={query.replace(' ', '%20')}"
+            
+            try:
+                await page.goto(url, timeout=30000, wait_until='networkidle')
+                await page.wait_for_timeout(3000)
+                
+                job_selectors = [
+                    'div.job-item',
+                    'div.job-card',
+                    '[data-testid="job-card"]',
+                    'article'
+                ]
+                
+                job_cards = []
+                for selector in job_selectors:
+                    try:
+                        cards = await page.query_selector_all(selector)
+                        if cards:
+                            job_cards = cards
+                            break
+                    except:
+                        continue
+                
+                for card in job_cards[:15]:
+                    try:
+                        title_elem = await card.query_selector('h3.job-title, h2, h3, a')
+                        company_elem = await card.query_selector('div.company-name, [data-testid="company"]')
+                        location_elem = await card.query_selector('div.location, [data-testid="location"]')
                         
-                        jobs.append({
-                            'title': title,
-                            'company': company,
-                            'location': location,
-                            'url': link,
-                            'posted_date': datetime.datetime.now(),
-                            'source': 'BuiltIn'
-                        })
-                except Exception as e:
-                    print(f"Error parsing BuiltIn job card: {e}")
-                    continue
+                        if title_elem:
+                            title = await title_elem.inner_text()
+                            company = await company_elem.inner_text() if company_elem else "Unknown"
+                            job_location = await location_elem.inner_text() if location_elem else "Unknown"
+                            
+                            link_elem = await card.query_selector('a')
+                            link = await link_elem.get_attribute('href') if link_elem else "#"
+                            
+                            jobs.append({
+                                'title': title.strip(),
+                                'company': company.strip(),
+                                'location': job_location.strip(),
+                                'url': link,
+                                'posted_date': datetime.datetime.now(),
+                                'source': 'BuiltIn'
+                            })
+                    except Exception as e:
+                        print(f"Error parsing BuiltIn job card: {e}")
+                        continue
+                        
+            except PlaywrightTimeoutError:
+                print(f"Timeout loading BuiltIn page")
+            except Exception as e:
+                print(f"Error navigating to BuiltIn: {e}")
+            finally:
+                await browser.close()
+                
     except Exception as e:
-        print(f"Error scraping BuiltIn: {e}")
+        print(f"Error in BuiltIn Playwright scraper: {e}")
     
     return jobs
 
-def fetch_greenhouse_jobs(company: str = None) -> List[Dict]:
-    """Scrape jobs from Greenhouse (company-specific)"""
+async def fetch_greenhouse_jobs_playwright() -> List[Dict]:
+    """Scrape jobs from Greenhouse using Playwright"""
     jobs = []
-    # Greenhouse jobs are company-specific, so we'll scrape from known companies
     companies = ['stripe', 'airbnb', 'doordash', 'instacart', 'shopify']
     
-    for comp in companies:
-        try:
-            url = f"https://boards.greenhouse.io/{comp}/jobs"
-            headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-            response = requests.get(url, headers=headers, timeout=10)
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                job_cards = soup.find_all('div', class_='opening')
-                
-                for card in job_cards[:10]:
+            for comp in companies:
+                try:
+                    page = await browser.new_page()
+                    url = f"https://boards.greenhouse.io/{comp}/jobs"
+                    
                     try:
-                        title_elem = card.find('a')
-                        if title_elem:
-                            title = title_elem.get_text(strip=True)
-                            link = f"https://boards.greenhouse.io{title_elem['href']}"
-                            
-                            # Check if it's a DevOps/SRE role
-                            if any(role.lower() in title.lower() for role in TARGET_ROLES):
-                                jobs.append({
-                                    'title': title,
-                                    'company': comp.capitalize(),
-                                    'location': 'USA',
-                                    'url': link,
-                                    'posted_date': datetime.datetime.now(),
-                                    'source': 'Greenhouse'
-                                })
+                        await page.goto(url, timeout=30000, wait_until='networkidle')
+                        await page.wait_for_timeout(2000)
+                        
+                        job_selectors = [
+                            'div.opening',
+                            'a.opening',
+                            '[data-testid="job-opening"]',
+                            'li.opening'
+                        ]
+                        
+                        job_cards = []
+                        for selector in job_selectors:
+                            try:
+                                cards = await page.query_selector_all(selector)
+                                if cards:
+                                    job_cards = cards
+                                    break
+                            except:
+                                continue
+                        
+                        for card in job_cards[:10]:
+                            try:
+                                title_elem = await card.query_selector('a')
+                                if title_elem:
+                                    title = await title_elem.inner_text()
+                                    link = await title_elem.get_attribute('href')
+                                    
+                                    if link and not link.startswith('http'):
+                                        link = f"https://boards.greenhouse.io{link}"
+                                    
+                                    if any(role.lower() in title.lower() for role in TARGET_ROLES):
+                                        jobs.append({
+                                            'title': title.strip(),
+                                            'company': comp.capitalize(),
+                                            'location': 'USA',
+                                            'url': link,
+                                            'posted_date': datetime.datetime.now(),
+                                            'source': 'Greenhouse'
+                                        })
+                            except Exception as e:
+                                print(f"Error parsing Greenhouse job card: {e}")
+                                continue
+                                
+                    except PlaywrightTimeoutError:
+                        print(f"Timeout loading Greenhouse for {comp}")
                     except Exception as e:
-                        print(f"Error parsing Greenhouse job card: {e}")
-                        continue
-        except Exception as e:
-            print(f"Error scraping Greenhouse for {comp}: {e}")
-            continue
+                        print(f"Error navigating to Greenhouse for {comp}: {e}")
+                    finally:
+                        await page.close()
+                        
+                except Exception as e:
+                    print(f"Error processing {comp}: {e}")
+                    continue
+                    
+            await browser.close()
+            
+    except Exception as e:
+        print(f"Error in Greenhouse Playwright scraper: {e}")
     
     return jobs
 
-def fetch_lever_jobs(company: str = None) -> List[Dict]:
-    """Scrape jobs from Lever (company-specific)"""
+async def fetch_lever_jobs_playwright() -> List[Dict]:
+    """Scrape jobs from Lever using Playwright"""
     jobs = []
-    # Lever jobs are company-specific
     companies = ['netflix', 'uber', 'lyft', 'spotify', 'slack']
     
-    for comp in companies:
-        try:
-            url = f"https://jobs.lever.co/{comp}"
-            headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-            response = requests.get(url, headers=headers, timeout=10)
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                job_cards = soup.find_all('div', class_='posting')
-                
-                for card in job_cards[:10]:
+            for comp in companies:
+                try:
+                    page = await browser.new_page()
+                    url = f"https://jobs.lever.co/{comp}"
+                    
                     try:
-                        title_elem = card.find('h5')
-                        link_elem = card.find('a', class_='posting-title')
+                        await page.goto(url, timeout=30000, wait_until='networkidle')
+                        await page.wait_for_timeout(2000)
                         
-                        if title_elem and link_elem:
-                            title = title_elem.get_text(strip=True)
-                            link = link_elem['href']
-                            
-                            # Check if it's a DevOps/SRE role
-                            if any(role.lower() in title.lower() for role in TARGET_ROLES):
-                                jobs.append({
-                                    'title': title,
-                                    'company': comp.capitalize(),
-                                    'location': 'USA',
-                                    'url': link,
-                                    'posted_date': datetime.datetime.now(),
-                                    'source': 'Lever'
-                                })
+                        job_selectors = [
+                            'div.posting',
+                            'a.posting-title',
+                            '[data-testid="posting"]',
+                            'article'
+                        ]
+                        
+                        job_cards = []
+                        for selector in job_selectors:
+                            try:
+                                cards = await page.query_selector_all(selector)
+                                if cards:
+                                    job_cards = cards
+                                    break
+                            except:
+                                continue
+                        
+                        for card in job_cards[:10]:
+                            try:
+                                title_elem = await card.query_selector('h5, a, h3')
+                                link_elem = await card.query_selector('a')
+                                
+                                if title_elem and link_elem:
+                                    title = await title_elem.inner_text()
+                                    link = await link_elem.get_attribute('href')
+                                    
+                                    if any(role.lower() in title.lower() for role in TARGET_ROLES):
+                                        jobs.append({
+                                            'title': title.strip(),
+                                            'company': comp.capitalize(),
+                                            'location': 'USA',
+                                            'url': link,
+                                            'posted_date': datetime.datetime.now(),
+                                            'source': 'Lever'
+                                        })
+                            except Exception as e:
+                                print(f"Error parsing Lever job card: {e}")
+                                continue
+                                
+                    except PlaywrightTimeoutError:
+                        print(f"Timeout loading Lever for {comp}")
                     except Exception as e:
-                        print(f"Error parsing Lever job card: {e}")
-                        continue
-        except Exception as e:
-            print(f"Error scraping Lever for {comp}: {e}")
-            continue
+                        print(f"Error navigating to Lever for {comp}: {e}")
+                    finally:
+                        await page.close()
+                        
+                except Exception as e:
+                    print(f"Error processing {comp}: {e}")
+                    continue
+                    
+            await browser.close()
+            
+    except Exception as e:
+        print(f"Error in Lever Playwright scraper: {e}")
     
     return jobs
 
-def fetch_workday_jobs() -> List[Dict]:
-    """Scrape jobs from Workday companies using job aggregators as proxy
-    
-    Workday is difficult to scrape directly because:
-    1. Most companies use JavaScript-rendered pages (React/Angular)
-    2. Strong anti-scraping measures
-    3. Each company has different HTML structures
-    
-    Solution: Use job aggregators that already index these companies
-    """
+async def fetch_workday_jobs_playwright() -> List[Dict]:
+    """Scrape jobs from Workday companies using Playwright"""
     jobs = []
     
-    # Use job aggregators that already scrape Workday companies
-    aggregators = [
-        {
-            'name': 'Indeed',
-            'url': 'https://www.indeed.com/jobs?q=DevOps+Engineer&l=USA&fromage=1&co=US',
-            'source': 'Indeed (Workday Companies)'
-        },
-        {
-            'name': 'Glassdoor',
-            'url': 'https://www.glassdoor.com/Job/devops-engineer-jobs-SRCH_KO0,14_IP2.htm?fromAge=1',
-            'source': 'Glassdoor (Workday Companies)'
-        }
+    # Major Workday companies
+    companies = [
+        {'name': 'Amazon', 'url': 'https://www.amazon.jobs/en/search?base_query=devops&location=usa'},
+        {'name': 'Microsoft', 'url': 'https://careers.microsoft.com/professionals/us/en/search-results?keywords=devops'},
+        {'name': 'Google', 'url': 'https://careers.google.com/jobs/results/?keyword=devops'},
     ]
     
-    for aggregator in aggregators:
-        try:
-            print(f"Fetching from {aggregator['name']} for Workday companies...")
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
             
-            response = requests.get(aggregator['url'], headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Parse jobs from aggregator
-                job_cards = soup.find_all(['div', 'li'], class_=lambda x: x and any(keyword in str(x).lower() for keyword in ['job', 'card', 'item', 'result']))
-                
-                for card in job_cards[:10]:
-                    try:
-                        # Extract job details
-                        title_elem = card.find(['h2', 'h3', 'a'], class_=lambda x: x and ('title' in str(x).lower() or 'job' in str(x).lower()))
-                        if not title_elem:
-                            title_elem = card.find('a')
-                        
-                        if title_elem:
-                            title = title_elem.get_text(strip=True)
-                            link = title_elem.get('href', '#')
-                            
-                            # Check if it's a DevOps/SRE role
-                            if any(role.lower() in title.lower() for role in TARGET_ROLES):
-                                # Extract company
-                                company_elem = card.find(['span', 'div'], class_=lambda x: x and 'company' in str(x).lower())
-                                company = company_elem.get_text(strip=True) if company_elem else "Unknown"
-                                
-                                # Extract location
-                                location_elem = card.find(['span', 'div'], class_=lambda x: x and 'location' in str(x).lower())
-                                location = location_elem.get_text(strip=True) if location_elem else "USA"
-                                
-                                # Make link absolute
-                                if link and not link.startswith('http'):
-                                    link = f"https://www.indeed.com{link}" if 'indeed' in aggregator['url'] else link
-                                
-                                jobs.append({
-                                    'title': title,
-                                    'company': company,
-                                    'location': location,
-                                    'url': link,
-                                    'posted_date': datetime.datetime.now(),
-                                    'source': aggregator['source']
-                                })
-                    except Exception as e:
-                        continue
-                        
-                if jobs:
-                    print(f"Found {len(jobs)} jobs from {aggregator['name']}")
-                    break
+            for company in companies:
+                try:
+                    page = await browser.new_page()
                     
-        except Exception as e:
-            print(f"Error scraping {aggregator['name']}: {e}")
-            continue
+                    try:
+                        await page.goto(company['url'], timeout=30000, wait_until='networkidle')
+                        await page.wait_for_timeout(3000)
+                        
+                        job_selectors = [
+                            'div.job-item',
+                            'li.job-tile',
+                            'div.job-tile',
+                            '[data-automation="job-tile"]',
+                            'a.job-title-link',
+                            'h3.job-title'
+                        ]
+                        
+                        job_cards = []
+                        for selector in job_selectors:
+                            try:
+                                cards = await page.query_selector_all(selector)
+                                if cards:
+                                    job_cards = cards
+                                    break
+                            except:
+                                continue
+                        
+                        for card in job_cards[:10]:
+                            try:
+                                title_elem = await card.query_selector('h2, h3, h4, a')
+                                if not title_elem:
+                                    title_elem = await card.query_selector('a')
+                                
+                                if title_elem:
+                                    title = await title_elem.inner_text()
+                                    link = await title_elem.get_attribute('href')
+                                    
+                                    if link and not link.startswith('http'):
+                                        if link.startswith('/'):
+                                            link = f"https://{company['url'].split('/')[2]}{link}"
+                                        else:
+                                            link = f"{company['url']}/{link}"
+                                    
+                                    if any(role.lower() in title.lower() for role in TARGET_ROLES):
+                                        location_elem = await card.query_selector('span, div, p')
+                                        location = await location_elem.inner_text() if location_elem else "USA"
+                                        
+                                        jobs.append({
+                                            'title': title.strip(),
+                                            'company': company['name'],
+                                            'location': location.strip(),
+                                            'url': link,
+                                            'posted_date': datetime.datetime.now(),
+                                            'source': 'Workday'
+                                        })
+                            except Exception as e:
+                                print(f"Error parsing Workday job card: {e}")
+                                continue
+                                
+                    except PlaywrightTimeoutError:
+                        print(f"Timeout loading {company['name']}")
+                    except Exception as e:
+                        print(f"Error navigating to {company['name']}: {e}")
+                    finally:
+                        await page.close()
+                        
+                except Exception as e:
+                    print(f"Error processing {company['name']}: {e}")
+                    continue
+                    
+            await browser.close()
+            
+    except Exception as e:
+        print(f"Error in Workday Playwright scraper: {e}")
     
     return jobs
 
-def fetch_raw_jobs() -> List[Dict]:
+async def fetch_raw_jobs_async() -> List[Dict]:
     """
-    Fetch jobs from multiple job portals
+    Fetch jobs from multiple job portals using Playwright for JavaScript-rendered sites
     Returns a list of raw job postings from the last 24 hours
     """
     print("Scraping job sites for new jobs...")
     all_jobs = []
     
-    # Scrape from multiple sources
+    # Scrape from LinkedIn (still using requests - works well)
     print("Fetching from LinkedIn...")
-    linkedin_jobs = fetch_linkedin_jobs("DevOps Engineer")
-    all_jobs.extend(linkedin_jobs)
+    try:
+        linkedin_jobs = fetch_linkedin_jobs("DevOps Engineer")
+        all_jobs.extend(linkedin_jobs)
+        print(f"LinkedIn: {len(linkedin_jobs)} jobs")
+    except Exception as e:
+        print(f"Error fetching LinkedIn: {e}")
     
-    print("Fetching from Glassdoor...")
-    glassdoor_jobs = fetch_glassdoor_jobs("SRE", "USA")
-    all_jobs.extend(glassdoor_jobs)
+    # Scrape from Playwright-based scrapers
+    print("Fetching from Glassdoor (Playwright)...")
+    try:
+        glassdoor_jobs = await fetch_glassdoor_jobs_playwright("SRE", "USA")
+        all_jobs.extend(glassdoor_jobs)
+        print(f"Glassdoor: {len(glassdoor_jobs)} jobs")
+    except Exception as e:
+        print(f"Error fetching Glassdoor: {e}")
     
-    print("Fetching from BuiltIn...")
-    builtin_jobs = fetch_builtin_jobs("Cloud Engineer")
-    all_jobs.extend(builtin_jobs)
+    print("Fetching from BuiltIn (Playwright)...")
+    try:
+        builtin_jobs = await fetch_builtin_jobs_playwright("Cloud Engineer")
+        all_jobs.extend(builtin_jobs)
+        print(f"BuiltIn: {len(builtin_jobs)} jobs")
+    except Exception as e:
+        print(f"Error fetching BuiltIn: {e}")
     
-    print("Fetching from Greenhouse...")
-    greenhouse_jobs = fetch_greenhouse_jobs()
-    all_jobs.extend(greenhouse_jobs)
+    print("Fetching from Greenhouse (Playwright)...")
+    try:
+        greenhouse_jobs = await fetch_greenhouse_jobs_playwright()
+        all_jobs.extend(greenhouse_jobs)
+        print(f"Greenhouse: {len(greenhouse_jobs)} jobs")
+    except Exception as e:
+        print(f"Error fetching Greenhouse: {e}")
     
-    print("Fetching from Lever...")
-    lever_jobs = fetch_lever_jobs()
-    all_jobs.extend(lever_jobs)
+    print("Fetching from Lever (Playwright)...")
+    try:
+        lever_jobs = await fetch_lever_jobs_playwright()
+        all_jobs.extend(lever_jobs)
+        print(f"Lever: {len(lever_jobs)} jobs")
+    except Exception as e:
+        print(f"Error fetching Lever: {e}")
     
-    print("Fetching from Workday...")
-    workday_jobs = fetch_workday_jobs()
-    all_jobs.extend(workday_jobs)
+    print("Fetching from Workday (Playwright)...")
+    try:
+        workday_jobs = await fetch_workday_jobs_playwright()
+        all_jobs.extend(workday_jobs)
+        print(f"Workday: {len(workday_jobs)} jobs")
+    except Exception as e:
+        print(f"Error fetching Workday: {e}")
     
     print(f"Total jobs fetched: {len(all_jobs)}")
     return all_jobs
+
+def fetch_raw_jobs() -> List[Dict]:
+    """
+    Synchronous wrapper for async fetch_raw_jobs_async
+    Fetch jobs from multiple job portals
+    Returns a list of raw job postings from the last 24 hours
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    try:
+        jobs = loop.run_until_complete(fetch_raw_jobs_async())
+        return jobs
+    except Exception as e:
+        print(f"Error in async job fetching: {e}")
+        # Fallback to LinkedIn only if async fails
+        print("Falling back to LinkedIn only...")
+        return fetch_linkedin_jobs("DevOps Engineer")
 
 def is_target_role(title: str) -> bool:
     """Check if job title matches target roles"""
