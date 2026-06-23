@@ -33,4 +33,4 @@ def search_endpoint():
 
 if __name__ == '__main__':
     # When running locally for testing:
-    app.run(debug=True) 
+    app.run(debug=True, port=5001) 
