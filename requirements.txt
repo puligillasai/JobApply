@@ -7,4 +7,7 @@ requests==2.31.0
 # HTML Parsing (needed if you are scraping the page content)
 beautifulsoup4==4.12.2 
 
+# Headless browser for JavaScript-rendered pages
+playwright==1.40.0
+
 # Add any other tools your agent uses (e.g., watchdog if you are monitoring files)

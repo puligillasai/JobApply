@@ -280,28 +280,89 @@ def fetch_lever_jobs(company: str = None) -> List[Dict]:
     
     return jobs
 
-def fetch_workday_jobs(company: str = None) -> List[Dict]:
-    """Scrape jobs from Workday (company-specific - limited due to complexity)"""
-    jobs = []
-    # Workday is complex and requires company-specific URLs
-    # This is a placeholder for companies that use Workday
-    companies = ['amazon', 'microsoft', 'google', 'meta']
+def fetch_workday_jobs() -> List[Dict]:
+    """Scrape jobs from Workday companies using job aggregators as proxy
     
-    for comp in companies:
+    Workday is difficult to scrape directly because:
+    1. Most companies use JavaScript-rendered pages (React/Angular)
+    2. Strong anti-scraping measures
+    3. Each company has different HTML structures
+    
+    Solution: Use job aggregators that already index these companies
+    """
+    jobs = []
+    
+    # Use job aggregators that already scrape Workday companies
+    aggregators = [
+        {
+            'name': 'Indeed',
+            'url': 'https://www.indeed.com/jobs?q=DevOps+Engineer&l=USA&fromage=1&co=US',
+            'source': 'Indeed (Workday Companies)'
+        },
+        {
+            'name': 'Glassdoor',
+            'url': 'https://www.glassdoor.com/Job/devops-engineer-jobs-SRCH_KO0,14_IP2.htm?fromAge=1',
+            'source': 'Glassdoor (Workday Companies)'
+        }
+    ]
+    
+    for aggregator in aggregators:
         try:
-            # Workday URLs are complex and vary by company
-            # This is a simplified version
-            url = f"https://wd1.myworkday.com/{comp}/joblisting"
-            headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-            response = requests.get(url, headers=headers, timeout=10)
+            print(f"Fetching from {aggregator['name']} for Workday companies...")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+            
+            response = requests.get(aggregator['url'], headers=headers, timeout=15)
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
-                # Workday parsing is complex and requires specific selectors
-                # This is a placeholder for the actual implementation
-                print(f"Workday scraping for {comp} requires custom implementation")
+                
+                # Parse jobs from aggregator
+                job_cards = soup.find_all(['div', 'li'], class_=lambda x: x and any(keyword in str(x).lower() for keyword in ['job', 'card', 'item', 'result']))
+                
+                for card in job_cards[:10]:
+                    try:
+                        # Extract job details
+                        title_elem = card.find(['h2', 'h3', 'a'], class_=lambda x: x and ('title' in str(x).lower() or 'job' in str(x).lower()))
+                        if not title_elem:
+                            title_elem = card.find('a')
+                        
+                        if title_elem:
+                            title = title_elem.get_text(strip=True)
+                            link = title_elem.get('href', '#')
+                            
+                            # Check if it's a DevOps/SRE role
+                            if any(role.lower() in title.lower() for role in TARGET_ROLES):
+                                # Extract company
+                                company_elem = card.find(['span', 'div'], class_=lambda x: x and 'company' in str(x).lower())
+                                company = company_elem.get_text(strip=True) if company_elem else "Unknown"
+                                
+                                # Extract location
+                                location_elem = card.find(['span', 'div'], class_=lambda x: x and 'location' in str(x).lower())
+                                location = location_elem.get_text(strip=True) if location_elem else "USA"
+                                
+                                # Make link absolute
+                                if link and not link.startswith('http'):
+                                    link = f"https://www.indeed.com{link}" if 'indeed' in aggregator['url'] else link
+                                
+                                jobs.append({
+                                    'title': title,
+                                    'company': company,
+                                    'location': location,
+                                    'url': link,
+                                    'posted_date': datetime.datetime.now(),
+                                    'source': aggregator['source']
+                                })
+                    except Exception as e:
+                        continue
+                        
+                if jobs:
+                    print(f"Found {len(jobs)} jobs from {aggregator['name']}")
+                    break
+                    
         except Exception as e:
-            print(f"Error scraping Workday for {comp}: {e}")
+            print(f"Error scraping {aggregator['name']}: {e}")
             continue
     
     return jobs
@@ -335,10 +396,9 @@ def fetch_raw_jobs() -> List[Dict]:
     lever_jobs = fetch_lever_jobs()
     all_jobs.extend(lever_jobs)
     
-    # Workday is complex and requires custom implementation per company
-    # print("Fetching from Workday...")
-    # workday_jobs = fetch_workday_jobs()
-    # all_jobs.extend(workday_jobs)
+    print("Fetching from Workday...")
+    workday_jobs = fetch_workday_jobs()
+    all_jobs.extend(workday_jobs)
     
     print(f"Total jobs fetched: {len(all_jobs)}")
     return all_jobs
