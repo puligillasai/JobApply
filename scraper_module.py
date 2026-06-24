@@ -9,10 +9,10 @@ import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import time
 
-# Target roles for filtering
-TARGET_ROLES = ['devops', 'sre', 'site reliability', 'cloud engineer', 'cloud operations', 
-                'observability', 'infrastructure', 'platform engineer', 'kubernetes', 'docker',
-                'aws', 'azure', 'gcp', 'terraform', 'ansible', 'ci/cd', 'jenkins', 'gitops']
+# Target roles for filtering (focused on SRE, Cloud, DevOps Engineer)
+TARGET_ROLES = ['devops', 'devops engineer', 'sre', 'site reliability engineer', 'site reliability',
+                'cloud engineer', 'cloud operations', 'cloud infrastructure',
+                'platform engineer', 'infrastructure engineer']
 
 # Skills for matching
 SKILLS_KEYWORDS = ['python', 'golang', 'java', 'kubernetes', 'docker', 'aws', 'azure', 'gcp',
@@ -117,7 +117,12 @@ def fetch_linkedin_jobs(query: str = "DevOps Engineer") -> List[Dict]:
     return jobs
 
 async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
-    """Scrape jobs from Glassdoor using Playwright for JavaScript-rendered content"""
+    """Scrape jobs from Glassdoor using Playwright for JavaScript-rendered content
+    
+    Args:
+        query: Job title to search for
+        location: Location filter
+    """
     jobs = []
     try:
         async with async_playwright() as p:
@@ -190,7 +195,11 @@ async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", locati
     return jobs
 
 async def fetch_builtin_jobs_playwright(query: str = "DevOps Engineer") -> List[Dict]:
-    """Scrape jobs from BuiltIn using Playwright"""
+    """Scrape jobs from BuiltIn using Playwright
+    
+    Args:
+        query: Job title to search for
+    """
     jobs = []
     try:
         async with async_playwright() as p:
@@ -258,10 +267,17 @@ async def fetch_builtin_jobs_playwright(query: str = "DevOps Engineer") -> List[
     
     return jobs
 
-async def fetch_greenhouse_jobs_playwright() -> List[Dict]:
-    """Scrape jobs from Greenhouse using Playwright"""
+async def fetch_greenhouse_jobs_playwright(custom_role: str = None) -> List[Dict]:
+    """Scrape jobs from Greenhouse using Playwright
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
+    """
     jobs = []
     companies = ['stripe', 'airbnb', 'doordash', 'instacart', 'shopify']
+    
+    # Use custom role if provided for filtering
+    search_role = custom_role if custom_role else None
     
     try:
         async with async_playwright() as p:
@@ -303,15 +319,27 @@ async def fetch_greenhouse_jobs_playwright() -> List[Dict]:
                                     if link and not link.startswith('http'):
                                         link = f"https://boards.greenhouse.io{link}"
                                     
-                                    if any(role.lower() in title.lower() for role in TARGET_ROLES):
-                                        jobs.append({
-                                            'title': title.strip(),
-                                            'company': comp.capitalize(),
-                                            'location': 'USA',
-                                            'url': link,
-                                            'posted_date': datetime.datetime.now(),
-                                            'source': 'Greenhouse'
-                                        })
+                                    # Filter by custom role if provided, otherwise use TARGET_ROLES
+                                    if search_role:
+                                        if search_role.lower() in title.lower():
+                                            jobs.append({
+                                                'title': title.strip(),
+                                                'company': comp.capitalize(),
+                                                'location': 'USA',
+                                                'url': link,
+                                                'posted_date': datetime.datetime.now(),
+                                                'source': 'Greenhouse'
+                                            })
+                                    else:
+                                        if any(role.lower() in title.lower() for role in TARGET_ROLES):
+                                            jobs.append({
+                                                'title': title.strip(),
+                                                'company': comp.capitalize(),
+                                                'location': 'USA',
+                                                'url': link,
+                                                'posted_date': datetime.datetime.now(),
+                                                'source': 'Greenhouse'
+                                            })
                             except Exception as e:
                                 print(f"Error parsing Greenhouse job card: {e}")
                                 continue
@@ -334,10 +362,17 @@ async def fetch_greenhouse_jobs_playwright() -> List[Dict]:
     
     return jobs
 
-async def fetch_lever_jobs_playwright() -> List[Dict]:
-    """Scrape jobs from Lever using Playwright"""
+async def fetch_lever_jobs_playwright(custom_role: str = None) -> List[Dict]:
+    """Scrape jobs from Lever using Playwright
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
+    """
     jobs = []
     companies = ['netflix', 'uber', 'lyft', 'spotify', 'slack']
+    
+    # Use custom role if provided for filtering
+    search_role = custom_role if custom_role else None
     
     try:
         async with async_playwright() as p:
@@ -378,15 +413,27 @@ async def fetch_lever_jobs_playwright() -> List[Dict]:
                                     title = await title_elem.inner_text()
                                     link = await link_elem.get_attribute('href')
                                     
-                                    if any(role.lower() in title.lower() for role in TARGET_ROLES):
-                                        jobs.append({
-                                            'title': title.strip(),
-                                            'company': comp.capitalize(),
-                                            'location': 'USA',
-                                            'url': link,
-                                            'posted_date': datetime.datetime.now(),
-                                            'source': 'Lever'
-                                        })
+                                    # Filter by custom role if provided, otherwise use TARGET_ROLES
+                                    if search_role:
+                                        if search_role.lower() in title.lower():
+                                            jobs.append({
+                                                'title': title.strip(),
+                                                'company': comp.capitalize(),
+                                                'location': 'USA',
+                                                'url': link,
+                                                'posted_date': datetime.datetime.now(),
+                                                'source': 'Lever'
+                                            })
+                                    else:
+                                        if any(role.lower() in title.lower() for role in TARGET_ROLES):
+                                            jobs.append({
+                                                'title': title.strip(),
+                                                'company': comp.capitalize(),
+                                                'location': 'USA',
+                                                'url': link,
+                                                'posted_date': datetime.datetime.now(),
+                                                'source': 'Lever'
+                                            })
                             except Exception as e:
                                 print(f"Error parsing Lever job card: {e}")
                                 continue
@@ -409,15 +456,22 @@ async def fetch_lever_jobs_playwright() -> List[Dict]:
     
     return jobs
 
-async def fetch_workday_jobs_playwright() -> List[Dict]:
-    """Scrape jobs from Workday companies using Playwright"""
+async def fetch_workday_jobs_playwright(custom_role: str = None) -> List[Dict]:
+    """Scrape jobs from Workday companies using Playwright
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
+    """
     jobs = []
     
-    # Major Workday companies
+    # Use custom role if provided, otherwise default to devops
+    search_role = custom_role if custom_role else "devops"
+    
+    # Major Workday companies with dynamic role search
     companies = [
-        {'name': 'Amazon', 'url': 'https://www.amazon.jobs/en/search?base_query=devops&location=usa'},
-        {'name': 'Microsoft', 'url': 'https://careers.microsoft.com/professionals/us/en/search-results?keywords=devops'},
-        {'name': 'Google', 'url': 'https://careers.google.com/jobs/results/?keyword=devops'},
+        {'name': 'Amazon', 'url': f'https://www.amazon.jobs/en/search?base_query={search_role}&location=usa'},
+        {'name': 'Microsoft', 'url': f'https://careers.microsoft.com/professionals/us/en/search-results?keywords={search_role}'},
+        {'name': 'Google', 'url': f'https://careers.google.com/jobs/results/?keyword={search_role}'},
     ]
     
     try:
@@ -555,7 +609,7 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     
     print("Fetching from Greenhouse (Playwright)...")
     try:
-        greenhouse_jobs = await fetch_greenhouse_jobs_playwright()
+        greenhouse_jobs = await fetch_greenhouse_jobs_playwright(custom_role=search_role)
         all_jobs.extend(greenhouse_jobs)
         print(f"Greenhouse: {len(greenhouse_jobs)} jobs")
     except Exception as e:
@@ -563,7 +617,7 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     
     print("Fetching from Lever (Playwright)...")
     try:
-        lever_jobs = await fetch_lever_jobs_playwright()
+        lever_jobs = await fetch_lever_jobs_playwright(custom_role=search_role)
         all_jobs.extend(lever_jobs)
         print(f"Lever: {len(lever_jobs)} jobs")
     except Exception as e:
@@ -571,7 +625,7 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     
     print("Fetching from Workday (Playwright)...")
     try:
-        workday_jobs = await fetch_workday_jobs_playwright()
+        workday_jobs = await fetch_workday_jobs_playwright(custom_role=search_role)
         all_jobs.extend(workday_jobs)
         print(f"Workday: {len(workday_jobs)} jobs")
     except Exception as e:

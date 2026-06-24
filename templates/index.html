@@ -10,7 +10,8 @@
 
     <header class="navbar">
         <h1>🚀 Agent Live Feed</h1>
-        <h2>Elite Roles Filtered: SRE/Cloud/DevOps (USA)</h2>
+        <h2 id="currentSearchRole">Elite Roles Filtered: SRE/Cloud/DevOps (USA)</h2>
+        <p id="searchStatus" style="font-size: 14px; color: #9ca3af; margin-top: 5px;">Ready to search</p>
     </header>
 
     <div class="container">
@@ -32,6 +33,18 @@
                 <input type="text" id="customRoleInput" class="input-field" placeholder="Enter any role (e.g., Software Engineer, Data Scientist)">
                 <button id="researchBtn" class="btn secondary">🔬 Research Role</button>
                 <p class="small-text">Search for any role across all job portals</p>
+            </div>
+
+            <div class="parameter-group">
+                <h4>Auto-Refresh</h4>
+                <select id="refreshInterval" class="input-field">
+                    <option value="manual">Manual Only</option>
+                    <option value="30">Every 30 seconds</option>
+                    <option value="900">Every 15 minutes</option>
+                    <option value="600">Every 10 minutes</option>
+                </select>
+                <button id="stopRefreshBtn" class="btn secondary" style="display: none;">⏹️ Stop Auto-Refresh</button>
+                <p class="small-text" id="lastUpdated">Last updated: Never</p>
             </div>
 
             <div class="parameter-group">
