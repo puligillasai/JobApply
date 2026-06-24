@@ -11,7 +11,7 @@ document.getElementById('runSearchBtn').addEventListener('click', async () => {
             headers: {
                 'Content-Type': 'application/json'
             },
-            // Optionally send search parameters here: body: JSON.stringify({ role: 'SRE' })
+            body: JSON.stringify({}) // Empty body for default search
         });
 
         if (!response.ok) {
@@ -25,7 +25,44 @@ document.getElementById('runSearchBtn').addEventListener('click', async () => {
         console.error("Search failed:", error);
         alert("Could not connect to the agent server. Try again later.");
     } finally {
-        runSearchBtn.textContent = 'Run Search'; // Reset button state
+        runSearchBtn.textContent = '🔍 Run Advanced Search'; // Reset button state
+    }
+});
+
+// Research button for custom role search
+document.getElementById('researchBtn').addEventListener('click', async () => {
+    const customRoleInput = document.getElementById('customRoleInput');
+    const customRole = customRoleInput.value.trim();
+    const researchBtn = document.getElementById('researchBtn');
+    
+    if (!customRole) {
+        alert('Please enter a role to research');
+        return;
+    }
+    
+    researchBtn.textContent = 'Researching...';
+    
+    try {
+        const response = await fetch('/api/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ custom_role: customRole })
+        });
+
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+
+        const jobsData = await response.json();
+        displayJobs(jobsData);
+
+    } catch (error) {
+        console.error("Research failed:", error);
+        alert("Could not connect to the agent server. Try again later.");
+    } finally {
+        researchBtn.textContent = '🔬 Research Role'; // Reset button state
     }
 });
 

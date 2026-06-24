@@ -461,11 +461,22 @@ async def fetch_workday_jobs_playwright() -> List[Dict]:
                                     title = await title_elem.inner_text()
                                     link = await title_elem.get_attribute('href')
                                     
-                                    if link and not link.startswith('http'):
-                                        if link.startswith('/'):
-                                            link = f"https://{company['url'].split('/')[2]}{link}"
+                                    # Ensure link is absolute and valid
+                                    if link:
+                                        if not link.startswith('http'):
+                                            if link.startswith('/'):
+                                                link = f"https://{company['url'].split('/')[2]}{link}"
+                                            else:
+                                                link = f"{company['url']}/{link}"
+                                    else:
+                                        # If no link found, try to find it differently
+                                        link_elem = await card.query_selector('a')
+                                        if link_elem:
+                                            link = await link_elem.get_attribute('href')
+                                            if link and not link.startswith('http'):
+                                                link = f"https://{company['url'].split('/')[2]}{link}"
                                         else:
-                                            link = f"{company['url']}/{link}"
+                                            link = company['url']  # Fallback to company page
                                     
                                     if any(role.lower() in title.lower() for role in TARGET_ROLES):
                                         location_elem = await card.query_selector('span, div, p')
@@ -501,18 +512,25 @@ async def fetch_workday_jobs_playwright() -> List[Dict]:
     
     return jobs
 
-async def fetch_raw_jobs_async() -> List[Dict]:
+async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     """
     Fetch jobs from multiple job portals using Playwright for JavaScript-rendered sites
     Returns a list of raw job postings from the last 24 hours
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
     """
     print("Scraping job sites for new jobs...")
     all_jobs = []
     
+    # Use custom role if provided, otherwise default to DevOps Engineer
+    search_role = custom_role if custom_role else "DevOps Engineer"
+    print(f"Searching for role: {search_role}")
+    
     # Scrape from LinkedIn (still using requests - works well)
     print("Fetching from LinkedIn...")
     try:
-        linkedin_jobs = fetch_linkedin_jobs("DevOps Engineer")
+        linkedin_jobs = fetch_linkedin_jobs(search_role)
         all_jobs.extend(linkedin_jobs)
         print(f"LinkedIn: {len(linkedin_jobs)} jobs")
     except Exception as e:
@@ -521,7 +539,7 @@ async def fetch_raw_jobs_async() -> List[Dict]:
     # Scrape from Playwright-based scrapers
     print("Fetching from Glassdoor (Playwright)...")
     try:
-        glassdoor_jobs = await fetch_glassdoor_jobs_playwright("SRE", "USA")
+        glassdoor_jobs = await fetch_glassdoor_jobs_playwright(search_role, "USA")
         all_jobs.extend(glassdoor_jobs)
         print(f"Glassdoor: {len(glassdoor_jobs)} jobs")
     except Exception as e:
@@ -529,7 +547,7 @@ async def fetch_raw_jobs_async() -> List[Dict]:
     
     print("Fetching from BuiltIn (Playwright)...")
     try:
-        builtin_jobs = await fetch_builtin_jobs_playwright("Cloud Engineer")
+        builtin_jobs = await fetch_builtin_jobs_playwright(search_role)
         all_jobs.extend(builtin_jobs)
         print(f"BuiltIn: {len(builtin_jobs)} jobs")
     except Exception as e:
@@ -562,11 +580,14 @@ async def fetch_raw_jobs_async() -> List[Dict]:
     print(f"Total jobs fetched: {len(all_jobs)}")
     return all_jobs
 
-def fetch_raw_jobs() -> List[Dict]:
+def fetch_raw_jobs(custom_role: str = None) -> List[Dict]:
     """
     Synchronous wrapper for async fetch_raw_jobs_async
     Fetch jobs from multiple job portals
     Returns a list of raw job postings from the last 24 hours
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
     """
     try:
         loop = asyncio.get_event_loop()
@@ -575,13 +596,14 @@ def fetch_raw_jobs() -> List[Dict]:
         asyncio.set_event_loop(loop)
     
     try:
-        jobs = loop.run_until_complete(fetch_raw_jobs_async())
+        jobs = loop.run_until_complete(fetch_raw_jobs_async(custom_role=custom_role))
         return jobs
     except Exception as e:
         print(f"Error in async job fetching: {e}")
         # Fallback to LinkedIn only if async fails
         print("Falling back to LinkedIn only...")
-        return fetch_linkedin_jobs("DevOps Engineer")
+        search_role = custom_role if custom_role else "DevOps Engineer"
+        return fetch_linkedin_jobs(search_role)
 
 def is_target_role(title: str) -> bool:
     """Check if job title matches target roles"""
@@ -640,15 +662,18 @@ def has_visa_sponsorship(job: Dict) -> bool:
     combined_text = company_lower + " " + title_lower
     return any(keyword in combined_text for keyword in VISA_KEYWORDS)
 
-def filter_and_rank_jobs(raw_jobs: List[Dict]) -> List[Dict]:
+def filter_and_rank_jobs(raw_jobs: List[Dict], custom_role: str = None) -> List[Dict]:
     """
     Filter jobs based on criteria:
-    - Target roles: DevOps, SRE, Cloud, Observability
+    - Target roles: DevOps, SRE, Cloud, Observability (or custom role if provided)
     - Location: USA
     - Timeframe: Last 24 hours
     - Visa sponsorship signal
-    - No security clearance required
+    -No security clearance required
     - Calculate match percentage
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
     """
     filtered_results = []
     now = datetime.datetime.now()
@@ -660,9 +685,15 @@ def filter_and_rank_jobs(raw_jobs: List[Dict]) -> List[Dict]:
             if job_age > datetime.timedelta(hours=24):
                 continue
         
-        # Check if it's a target role
-        if not is_target_role(job.get('title', '')):
-            continue
+        # Check if it's a target role (or custom role if provided)
+        if custom_role:
+            # For custom role, check if the custom role is in the title
+            if custom_role.lower() not in job.get('title', '').lower():
+                continue
+        else:
+            # Use default target roles
+            if not is_target_role(job.get('title', '')):
+                continue
         
         # Check if it's USA location
         if not is_usa_location(job.get('location', '')):
@@ -696,9 +727,13 @@ def filter_and_rank_jobs(raw_jobs: List[Dict]) -> List[Dict]:
     print(f"Filtered jobs matching criteria: {len(filtered_results)}")
     return filtered_results
 
-def run_full_search() -> List[Dict]:
-    """Combines fetching and filtering into one function"""
-    raw = fetch_raw_jobs()
-    return filter_and_rank_jobs(raw)
+def run_full_search(custom_role: str = None) -> List[Dict]:
+    """Combines fetching and filtering into one function
+    
+    Args:
+        custom_role: Optional custom role to search for (e.g., "Software Engineer")
+    """
+    raw = fetch_raw_jobs(custom_role=custom_role)
+    return filter_and_rank_jobs(raw, custom_role=custom_role)
 
 # End of scraper_module.py

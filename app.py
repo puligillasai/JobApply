@@ -18,12 +18,12 @@ def search_endpoint():
     """ Accepts criteria from the frontend and returns ranked jobs. """
     
     # 1. Get Criteria (Optional: If you add filters like 'only SRE')
-    # data = request.get_json()
-    # search_query = data.get('query')
+    data = request.get_json()
+    custom_role = data.get('custom_role') if data else None
 
     # 2. Run the Agent/Scraper
     try:
-        matching_jobs = run_full_search() # Calling the intelligence module
+        matching_jobs = run_full_search(custom_role=custom_role) # Calling the intelligence module
     except Exception as e:
         print(f"Error during search: {e}")
         return jsonify({"error": "Internal server error during search."}), 500
