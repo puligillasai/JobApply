@@ -171,17 +171,51 @@ function displayJobs(jobsArray) {
         return;
     }
 
-    jobsArray.forEach(job => {
+    jobsArray.forEach((job, index) => {
         // Dynamically build the HTML job card using the data received from the backend
         const confidenceClass = job.confidence === 'High Confidence' ? 'high-confidence' : 
                                job.confidence === 'Medium Confidence' ? 'medium-confidence' : 'low-confidence';
         const matchColor = job.match_percentage >= 70 ? '#10b981' : 
                           job.match_percentage >= 50 ? '#f59e0b' : '#ef4444';
+        
+        // Get application status from localStorage
+        const jobId = `job_${job.company}_${job.title.replace(/\s+/g, '_')}`;
+        const appStatus = localStorage.getItem(jobId) || 'not_applied';
+        
+        const statusColors = {
+            'not_applied': '#64748b',
+            'applied': '#10b981',
+            'in_progress': '#f59e0b',
+            'needs_attention': '#ef4444'
+        };
+        
+        const statusLabels = {
+            'not_applied': 'Not Applied',
+            'applied': '✓ Applied',
+            'in_progress': '⏳ In Progress',
+            'needs_attention': '⚠️ Needs Attention'
+        };
+        
         const jobCardHtml = `
-            <div class="job-card ${confidenceClass}"> 
+            <div class="job-card ${confidenceClass}" data-job-id="${jobId}"> 
                 <span class="status-tag">${job.confidence}</span>
                 <div class="match-percentage" style="color: ${matchColor}; font-size: 1.5em; font-weight: bold; margin-bottom: 10px;">
                     🎯 ${job.match_percentage}% Match
+                </div>
+                <div class="application-status" style="margin-bottom: 10px;">
+                    <label style="font-size: 12px; color: #9ca3af;">Application Status:</label>
+                    <select class="status-select" onchange="updateApplicationStatus('${jobId}', this.value)" 
+                            style="padding: 5px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); 
+                                   background: rgba(255,255,255,0.1); color: white; margin-left: 10px;">
+                        <option value="not_applied" ${appStatus === 'not_applied' ? 'selected' : ''}>Not Applied</option>
+                        <option value="applied" ${appStatus === 'applied' ? 'selected' : ''}>✓ Applied</option>
+                        <option value="in_progress" ${appStatus === 'in_progress' ? 'selected' : ''}>⏳ In Progress</option>
+                        <option value="needs_attention" ${appStatus === 'needs_attention' ? 'selected' : ''}>⚠️ Needs Attention</option>
+                    </select>
+                    <span class="status-badge" style="margin-left: 10px; padding: 4px 8px; border-radius: 4px; 
+                                                        background: ${statusColors[appStatus]}; color: white; font-size: 12px; font-weight: bold;">
+                        ${statusLabels[appStatus]}
+                    </span>
                 </div>
                 <h3>${job.title}</h3>
                 <p class="company-tag">${job.company}</p>
@@ -189,13 +223,63 @@ function displayJobs(jobsArray) {
                     <p><strong>📍 Location:</strong> ${job.location || 'Not specified'}</p>
                     <p><strong>📅 Posted:</strong> ${job.posted_date || 'Recently'}</p>
                     <p><strong>🌐 Source:</strong> ${job.source || 'Unknown'}</p>
-                    <a href="${job.link}" target="_blank" rel="noopener noreferrer" class="btn primary">Apply Now &rarr;</a>
+                    <a href="${job.link}" target="_blank" rel="noopener noreferrer" 
+                       class="btn primary apply-link" onclick="markAsApplied('${jobId}')">Apply Now &rarr;</a>
                     <p class="raw-link" style="margin-top: 10px; font-size: 12px; word-break: break-all;">
-                        🔗 <a href="${job.link}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa;">${job.link}</a>
+                        🔗 <a href="${job.link}" target="_blank" rel="noopener noreferrer" 
+                                 style="color: #60a5fa;" onclick="markAsApplied('${jobId}')">${job.link}</a>
                     </p>
                 </div>
             </div>`;
         container.innerHTML += jobCardHtml;
     });
+}
+
+function updateApplicationStatus(jobId, status) {
+    localStorage.setItem(jobId, status);
+    
+    // Update the status badge
+    const jobCard = document.querySelector(`[data-job-id="${jobId}"]`);
+    if (jobCard) {
+        const statusBadge = jobCard.querySelector('.status-badge');
+        const statusColors = {
+            'not_applied': '#64748b',
+            'applied': '#10b981',
+            'in_progress': '#f59e0b',
+            'needs_attention': '#ef4444'
+        };
+        const statusLabels = {
+            'not_applied': 'Not Applied',
+            'applied': '✓ Applied',
+            'in_progress': '⏳ In Progress',
+            'needs_attention': '⚠️ Needs Attention'
+        };
+        
+        statusBadge.style.background = statusColors[status];
+        statusBadge.textContent = statusLabels[status];
+        
+        // Update link color based on status
+        const applyLink = jobCard.querySelector('.apply-link');
+        if (applyLink) {
+            if (status === 'applied') {
+                applyLink.style.background = '#10b981';
+                applyLink.textContent = '✓ Applied';
+            } else if (status === 'in_progress') {
+                applyLink.style.background = '#f59e0b';
+                applyLink.textContent = '⏳ In Progress';
+            } else if (status === 'needs_attention') {
+                applyLink.style.background = '#ef4444';
+                applyLink.textContent = '⚠️ Needs Attention';
+            } else {
+                applyLink.style.background = '';
+                applyLink.textContent = 'Apply Now →';
+            }
+        }
+    }
+}
+
+function markAsApplied(jobId) {
+    // Auto-mark as applied when link is clicked
+    updateApplicationStatus(jobId, 'applied');
 }
 

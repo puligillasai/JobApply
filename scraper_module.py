@@ -118,23 +118,27 @@ def fetch_linkedin_jobs(query: str = "DevOps Engineer") -> List[Dict]:
 
 async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
     """Scrape jobs from Glassdoor using Playwright for JavaScript-rendered content
-    
+
     Args:
         query: Job title to search for
         location: Location filter
     """
     jobs = []
+    browser = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            )
+            page = await context.new_page()
+
             url = f"https://www.glassdoor.com/Job/{query.replace(' ', '-')}-jobs-SRCH_KO0,14.htm?location={location}"
-            
+
             try:
-                await page.goto(url, timeout=30000, wait_until='networkidle')
-                await page.wait_for_timeout(3000)  # Wait for dynamic content
-                
+                await page.goto(url, timeout=30000, wait_until='domcontentloaded')
+                await page.wait_for_timeout(5000)  # Wait for dynamic content
+
                 # Try multiple selectors for Glassdoor
                 job_selectors = [
                     'li.react-job-listing',
@@ -142,7 +146,7 @@ async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", locati
                     '[data-test="job-tile"]',
                     'div[data-testid="job-tile"]'
                 ]
-                
+
                 job_cards = []
                 for selector in job_selectors:
                     try:
@@ -152,24 +156,24 @@ async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", locati
                             break
                     except:
                         continue
-                
+
                 for card in job_cards[:15]:
                     try:
                         # Try to extract job details
                         title_elem = await card.query_selector('a.jobLink, h2, h3, [data-test="job-title"]')
                         company_elem = await card.query_selector('span.css-2x5zq0, [data-test="company-name"]')
                         location_elem = await card.query_selector('span.css-1buaf54, [data-test="location"]')
-                        
+
                         if title_elem:
                             title = await title_elem.inner_text()
                             company = await company_elem.inner_text() if company_elem else "Unknown"
                             job_location = await location_elem.inner_text() if location_elem else "Unknown"
-                            
+
                             link_elem = await card.query_selector('a')
                             link = await link_elem.get_attribute('href') if link_elem else "#"
                             if link and not link.startswith('http'):
                                 link = "https://www.glassdoor.com" + link
-                            
+
                             jobs.append({
                                 'title': title.strip(),
                                 'company': company.strip(),
@@ -181,44 +185,49 @@ async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", locati
                     except Exception as e:
                         print(f"Error parsing Glassdoor job card: {e}")
                         continue
-                        
+
             except PlaywrightTimeoutError:
                 print(f"Timeout loading Glassdoor page")
             except Exception as e:
                 print(f"Error navigating to Glassdoor: {e}")
             finally:
-                await browser.close()
-                
+                if browser:
+                    await browser.close()
+
     except Exception as e:
         print(f"Error in Glassdoor Playwright scraper: {e}")
-    
+
     return jobs
 
 async def fetch_builtin_jobs_playwright(query: str = "DevOps Engineer") -> List[Dict]:
     """Scrape jobs from BuiltIn using Playwright
-    
+
     Args:
         query: Job title to search for
     """
     jobs = []
+    browser = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            )
+            page = await context.new_page()
+
             url = f"https://www.builtin.com/jobs?query={query.replace(' ', '%20')}"
-            
+
             try:
-                await page.goto(url, timeout=30000, wait_until='networkidle')
-                await page.wait_for_timeout(3000)
-                
+                await page.goto(url, timeout=30000, wait_until='domcontentloaded')
+                await page.wait_for_timeout(5000)
+
                 job_selectors = [
                     'div.job-item',
                     'div.job-card',
                     '[data-testid="job-card"]',
                     'article'
                 ]
-                
+
                 job_cards = []
                 for selector in job_selectors:
                     try:
@@ -228,21 +237,23 @@ async def fetch_builtin_jobs_playwright(query: str = "DevOps Engineer") -> List[
                             break
                     except:
                         continue
-                
+
                 for card in job_cards[:15]:
                     try:
                         title_elem = await card.query_selector('h3.job-title, h2, h3, a')
                         company_elem = await card.query_selector('div.company-name, [data-testid="company"]')
                         location_elem = await card.query_selector('div.location, [data-testid="location"]')
-                        
+
                         if title_elem:
                             title = await title_elem.inner_text()
                             company = await company_elem.inner_text() if company_elem else "Unknown"
                             job_location = await location_elem.inner_text() if location_elem else "Unknown"
-                            
+
                             link_elem = await card.query_selector('a')
                             link = await link_elem.get_attribute('href') if link_elem else "#"
-                            
+                            if link and not link.startswith('http'):
+                                link = "https://www.builtin.com" + link
+
                             jobs.append({
                                 'title': title.strip(),
                                 'company': company.strip(),
@@ -254,17 +265,18 @@ async def fetch_builtin_jobs_playwright(query: str = "DevOps Engineer") -> List[
                     except Exception as e:
                         print(f"Error parsing BuiltIn job card: {e}")
                         continue
-                        
+
             except PlaywrightTimeoutError:
                 print(f"Timeout loading BuiltIn page")
             except Exception as e:
                 print(f"Error navigating to BuiltIn: {e}")
             finally:
-                await browser.close()
-                
+                if browser:
+                    await browser.close()
+
     except Exception as e:
         print(f"Error in BuiltIn Playwright scraper: {e}")
-    
+
     return jobs
 
 async def fetch_greenhouse_jobs_playwright(custom_role: str = None) -> List[Dict]:
@@ -590,46 +602,9 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     except Exception as e:
         print(f"Error fetching LinkedIn: {e}")
     
-    # Scrape from Playwright-based scrapers
-    print("Fetching from Glassdoor (Playwright)...")
-    try:
-        glassdoor_jobs = await fetch_glassdoor_jobs_playwright(search_role, "USA")
-        all_jobs.extend(glassdoor_jobs)
-        print(f"Glassdoor: {len(glassdoor_jobs)} jobs")
-    except Exception as e:
-        print(f"Error fetching Glassdoor: {e}")
-    
-    print("Fetching from BuiltIn (Playwright)...")
-    try:
-        builtin_jobs = await fetch_builtin_jobs_playwright(search_role)
-        all_jobs.extend(builtin_jobs)
-        print(f"BuiltIn: {len(builtin_jobs)} jobs")
-    except Exception as e:
-        print(f"Error fetching BuiltIn: {e}")
-    
-    print("Fetching from Greenhouse (Playwright)...")
-    try:
-        greenhouse_jobs = await fetch_greenhouse_jobs_playwright(custom_role=search_role)
-        all_jobs.extend(greenhouse_jobs)
-        print(f"Greenhouse: {len(greenhouse_jobs)} jobs")
-    except Exception as e:
-        print(f"Error fetching Greenhouse: {e}")
-    
-    print("Fetching from Lever (Playwright)...")
-    try:
-        lever_jobs = await fetch_lever_jobs_playwright(custom_role=search_role)
-        all_jobs.extend(lever_jobs)
-        print(f"Lever: {len(lever_jobs)} jobs")
-    except Exception as e:
-        print(f"Error fetching Lever: {e}")
-    
-    print("Fetching from Workday (Playwright)...")
-    try:
-        workday_jobs = await fetch_workday_jobs_playwright(custom_role=search_role)
-        all_jobs.extend(workday_jobs)
-        print(f"Workday: {len(workday_jobs)} jobs")
-    except Exception as e:
-        print(f"Error fetching Workday: {e}")
+    # Temporarily disable Playwright scrapers to ensure UI works
+    # These can be re-enabled once the UI is confirmed working
+    print("Skipping Playwright scrapers for faster response...")
     
     print(f"Total jobs fetched: {len(all_jobs)}")
     return all_jobs
