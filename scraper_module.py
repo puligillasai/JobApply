@@ -76,44 +76,172 @@ def fetch_indeed_jobs(query: str = "DevOps Engineer", location: str = "USA") -> 
     return jobs
 
 def fetch_linkedin_jobs(query: str = "DevOps Engineer") -> List[Dict]:
-    """Scrape jobs from LinkedIn (limited due to anti-scraping)"""
+    """Scrape jobs from LinkedIn using requests (Playwright gets blocked)"""
     jobs = []
     try:
-        url = f"https://www.linkedin.com/jobs/search/?keywords={query}&location=United%20States&f_TPR=r86400"
-        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
+        # Try multiple LinkedIn URLs to get more results
+        urls = [
+            f"https://www.linkedin.com/jobs/search/?keywords={query}&location=United%20States&f_TPR=r86400&f_JT=F",
+            f"https://www.linkedin.com/jobs/search/?keywords={query}&location=United%20States&f_TPR=r604800",
+            f"https://www.linkedin.com/jobs/search/?keywords={query}&location=Remote"
+        ]
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            job_cards = soup.find_all('div', class_='base-card')
-            
-            for card in job_cards[:20]:
-                try:
-                    title_elem = card.find('h3', class_='base-search-card__title')
-                    company_elem = card.find('h4', class_='base-search-card__subtitle')
-                    location_elem = card.find('span', class_='job-search-card__location')
-                    link_elem = card.find('a', class_='base-card__full-link')
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive'
+        }
+        
+        for url in urls:
+            try:
+                response = requests.get(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.content, 'html.parser')
                     
-                    if title_elem and company_elem:
-                        title = title_elem.get_text(strip=True)
-                        company = company_elem.get_text(strip=True).replace('Hiring', '').strip()
-                        location = location_elem.get_text(strip=True) if location_elem else "Unknown"
-                        link = link_elem['href'] if link_elem else "#"
-                        
-                        jobs.append({
-                            'title': title,
-                            'company': company,
-                            'location': location,
-                            'url': link,
-                            'posted_date': datetime.datetime.now(),
-                            'source': 'LinkedIn'
-                        })
-                except Exception as e:
-                    print(f"Error parsing LinkedIn job card: {e}")
-                    continue
+                    # Try multiple selectors for job cards
+                    job_selectors = [
+                        ('div', 'base-card'),
+                        ('div', 'job-search-card'),
+                        ('li', 'occludable-update')
+                    ]
+                    
+                    job_cards = []
+                    for tag, class_name in job_selectors:
+                        cards = soup.find_all(tag, class_=class_name)
+                        if cards:
+                            job_cards = cards
+                            print(f"LinkedIn: Found {len(job_cards)} cards with {tag}.{class_name}")
+                            break
+                    
+                    for card in job_cards[:50]:  # Increased limit
+                        try:
+                            # Try multiple selectors for job details
+                            title_elem = card.find('h3', class_='base-search-card__title') or card.find('h3')
+                            company_elem = card.find('h4', class_='base-search-card__subtitle') or card.find('h4')
+                            location_elem = card.find('span', class_='job-search-card__location') or card.find('span')
+                            link_elem = card.find('a', class_='base-card__full-link') or card.find('a')
+                            
+                            if title_elem and company_elem:
+                                title = title_elem.get_text(strip=True)
+                                company = company_elem.get_text(strip=True).replace('Hiring', '').strip()
+                                location = location_elem.get_text(strip=True) if location_elem else "Unknown"
+                                link = link_elem['href'] if link_elem else "#"
+                                
+                                # Avoid duplicates
+                                if not any(job['title'] == title and job['company'] == company for job in jobs):
+                                    jobs.append({
+                                        'title': title,
+                                        'company': company,
+                                        'location': location,
+                                        'url': link,
+                                        'posted_date': datetime.datetime.now(),
+                                        'source': 'LinkedIn'
+                                    })
+                        except Exception as e:
+                            print(f"Error parsing LinkedIn job card: {e}")
+                            continue
+            except Exception as e:
+                print(f"Error fetching LinkedIn from {url}: {e}")
+                continue
+                
     except Exception as e:
         print(f"Error scraping LinkedIn: {e}")
     
+    print(f"LinkedIn: Total {len(jobs)} unique jobs")
+    return jobs
+
+async def fetch_linkedin_jobs_playwright(query: str = "DevOps Engineer") -> List[Dict]:
+    """Scrape jobs from LinkedIn using Playwright for dynamic content"""
+    jobs = []
+    browser = None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = await context.new_page()
+
+            # LinkedIn search URL with location filter
+            url = f"https://www.linkedin.com/jobs/search/?keywords={query}&location=United%20States&f_TPR=r86400&f_JT=F"
+            
+            try:
+                await page.goto(url, timeout=30000, wait_until='networkidle')
+                await page.wait_for_timeout(3000)  # Wait for dynamic content
+
+                # Scroll down to load more jobs
+                for _ in range(5):
+                    await page.evaluate('window.scrollBy(0, 1000)')
+                    await page.wait_for_timeout(1000)
+
+                # Try multiple selectors for LinkedIn job cards
+                job_selectors = [
+                    'div.job-search-card',
+                    'li.occludable-update',
+                    'div[data-urn]',
+                    '.jobs-search-results__list-item'
+                ]
+
+                job_cards = []
+                for selector in job_selectors:
+                    try:
+                        cards = await page.query_selector_all(selector)
+                        if cards:
+                            job_cards = cards
+                            print(f"Found {len(job_cards)} job cards with selector: {selector}")
+                            break
+                    except:
+                        continue
+
+                # Extract more jobs (up to 100)
+                for card in job_cards[:100]:
+                    try:
+                        # Try multiple selectors for job details
+                        title_elem = await card.query_selector('h3, .job-card-list__title, [data-automation-id="job-title"]')
+                        company_elem = await card.query_selector('h4, .job-card-container__company-name, [data-automation-id="company-name"]')
+                        location_elem = await card.query_selector('span, .job-card-container__metadata-item, [data-automation-id="location"]')
+                        link_elem = await card.query_selector('a, .job-card-list__title, [data-automation-id="job-title"]')
+
+                        if title_elem:
+                            title = await title_elem.inner_text()
+                            company = await company_elem.inner_text() if company_elem else "Unknown"
+                            job_location = await location_elem.inner_text() if location_elem else "Unknown"
+                            
+                            link = "#"
+                            if link_elem:
+                                link = await link_elem.get_attribute('href')
+                                if link and not link.startswith('http'):
+                                    link = "https://www.linkedin.com" + link
+
+                            jobs.append({
+                                'title': title.strip(),
+                                'company': company.strip(),
+                                'location': job_location.strip(),
+                                'url': link,
+                                'posted_date': datetime.datetime.now(),
+                                'source': 'LinkedIn'
+                            })
+                    except Exception as e:
+                        print(f"Error parsing LinkedIn job card: {e}")
+                        continue
+
+                print(f"LinkedIn: {len(jobs)} jobs extracted")
+
+            except PlaywrightTimeoutError:
+                print(f"Timeout loading LinkedIn page")
+            except Exception as e:
+                print(f"Error navigating to LinkedIn: {e}")
+            finally:
+                if browser:
+                    await browser.close()
+
+    except Exception as e:
+        print(f"Error in LinkedIn Playwright scraper: {e}")
+
     return jobs
 
 async def fetch_glassdoor_jobs_playwright(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
@@ -593,7 +721,7 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     search_role = custom_role if custom_role else "DevOps Engineer"
     print(f"Searching for role: {search_role}")
     
-    # Scrape from LinkedIn (still using requests - works well)
+    # Scrape from LinkedIn using requests (Playwright gets blocked)
     print("Fetching from LinkedIn...")
     try:
         linkedin_jobs = fetch_linkedin_jobs(search_role)
@@ -602,9 +730,60 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     except Exception as e:
         print(f"Error fetching LinkedIn: {e}")
     
-    # Temporarily disable Playwright scrapers to ensure UI works
-    # These can be re-enabled once the UI is confirmed working
-    print("Skipping Playwright scrapers for faster response...")
+    # Scrape from Glassdoor with timeout
+    print("Fetching from Glassdoor (Playwright)...")
+    try:
+        glassdoor_jobs = await asyncio.wait_for(fetch_glassdoor_jobs_playwright(search_role, "USA"), timeout=20)
+        all_jobs.extend(glassdoor_jobs)
+        print(f"Glassdoor: {len(glassdoor_jobs)} jobs")
+    except asyncio.TimeoutError:
+        print("Glassdoor: Timeout - skipping")
+    except Exception as e:
+        print(f"Error fetching Glassdoor: {e}")
+    
+    # Scrape from BuiltIn with timeout
+    print("Fetching from BuiltIn (Playwright)...")
+    try:
+        builtin_jobs = await asyncio.wait_for(fetch_builtin_jobs_playwright(search_role), timeout=20)
+        all_jobs.extend(builtin_jobs)
+        print(f"BuiltIn: {len(builtin_jobs)} jobs")
+    except asyncio.TimeoutError:
+        print("BuiltIn: Timeout - skipping")
+    except Exception as e:
+        print(f"Error fetching BuiltIn: {e}")
+    
+    # Scrape from Greenhouse with timeout
+    print("Fetching from Greenhouse (Playwright)...")
+    try:
+        greenhouse_jobs = await asyncio.wait_for(fetch_greenhouse_jobs_playwright(custom_role=search_role), timeout=20)
+        all_jobs.extend(greenhouse_jobs)
+        print(f"Greenhouse: {len(greenhouse_jobs)} jobs")
+    except asyncio.TimeoutError:
+        print("Greenhouse: Timeout - skipping")
+    except Exception as e:
+        print(f"Error fetching Greenhouse: {e}")
+    
+    # Scrape from Lever with timeout
+    print("Fetching from Lever (Playwright)...")
+    try:
+        lever_jobs = await asyncio.wait_for(fetch_lever_jobs_playwright(custom_role=search_role), timeout=20)
+        all_jobs.extend(lever_jobs)
+        print(f"Lever: {len(lever_jobs)} jobs")
+    except asyncio.TimeoutError:
+        print("Lever: Timeout - skipping")
+    except Exception as e:
+        print(f"Error fetching Lever: {e}")
+    
+    # Scrape from Workday with timeout
+    print("Fetching from Workday (Playwright)...")
+    try:
+        workday_jobs = await asyncio.wait_for(fetch_workday_jobs_playwright(custom_role=search_role), timeout=20)
+        all_jobs.extend(workday_jobs)
+        print(f"Workday: {len(workday_jobs)} jobs")
+    except asyncio.TimeoutError:
+        print("Workday: Timeout - skipping")
+    except Exception as e:
+        print(f"Error fetching Workday: {e}")
     
     print(f"Total jobs fetched: {len(all_jobs)}")
     return all_jobs
