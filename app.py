@@ -20,10 +20,11 @@ def search_endpoint():
     # 1. Get Criteria (Optional: If you add filters like 'only SRE')
     data = request.get_json()
     custom_role = data.get('custom_role') if data else None
+    selected_portals = data.get('portals') if data else None
 
     # 2. Run the Agent/Scraper
     try:
-        matching_jobs = run_full_search(custom_role=custom_role) # Calling the intelligence module
+        matching_jobs = run_full_search(custom_role=custom_role, portals=selected_portals) # Calling the intelligence module
     except Exception as e:
         print(f"Error during search: {e}")
         return jsonify({"error": "Internal server error during search."}), 500

@@ -706,13 +706,14 @@ async def fetch_workday_jobs_playwright(custom_role: str = None) -> List[Dict]:
     
     return jobs
 
-async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
+async def fetch_raw_jobs_async(custom_role: str = None, portals: List[str] = None) -> List[Dict]:
     """
     Fetch jobs from multiple job portals using Playwright for JavaScript-rendered sites
     Returns a list of raw job postings from the last 24 hours
     
     Args:
         custom_role: Optional custom role to search for (e.g., "Software Engineer")
+        portals: Optional list of portals to scrape (e.g., ['linkedin', 'indeed', 'glassdoor'])
     """
     print("Scraping job sites for new jobs...")
     all_jobs = []
@@ -721,74 +722,110 @@ async def fetch_raw_jobs_async(custom_role: str = None) -> List[Dict]:
     search_role = custom_role if custom_role else "DevOps Engineer"
     print(f"Searching for role: {search_role}")
     
+    # Default to all portals if none specified
+    if portals is None:
+        portals = ['linkedin', 'indeed', 'glassdoor', 'ziprecruiter', 'careerbuilder', 'monster', 
+                  'workday', 'greenhouse', 'lever', 'smartrecruiters', 'successfactors', 'flexjobs',
+                  'weworkremotely', 'wellfound', 'dice', 'upwork', 'fiverr', 'freelancer', 'toptal',
+                  'snagajob', 'handshake', 'usajobs', 'roberthalf', 'simplyhired', 'linkup',
+                  'builtin', 'idealist', 'ladders', 'craigslist']
+    
+    print(f"Selected portals: {', '.join(portals)}")
+    
     # Scrape from LinkedIn using requests (Playwright gets blocked)
-    print("Fetching from LinkedIn...")
-    try:
-        linkedin_jobs = fetch_linkedin_jobs(search_role)
-        all_jobs.extend(linkedin_jobs)
-        print(f"LinkedIn: {len(linkedin_jobs)} jobs")
-    except Exception as e:
-        print(f"Error fetching LinkedIn: {e}")
+    if 'linkedin' in portals:
+        print("Fetching from LinkedIn...")
+        try:
+            linkedin_jobs = fetch_linkedin_jobs(search_role)
+            all_jobs.extend(linkedin_jobs)
+            print(f"LinkedIn: {len(linkedin_jobs)} jobs")
+        except Exception as e:
+            print(f"Error fetching LinkedIn: {e}")
+    
+    # Scrape from Indeed
+    if 'indeed' in portals:
+        print("Fetching from Indeed...")
+        try:
+            indeed_jobs = fetch_indeed_jobs(search_role, "USA")
+            all_jobs.extend(indeed_jobs)
+            print(f"Indeed: {len(indeed_jobs)} jobs")
+        except Exception as e:
+            print(f"Error fetching Indeed: {e}")
     
     # Scrape from Glassdoor with timeout
-    print("Fetching from Glassdoor (Playwright)...")
-    try:
-        glassdoor_jobs = await asyncio.wait_for(fetch_glassdoor_jobs_playwright(search_role, "USA"), timeout=20)
-        all_jobs.extend(glassdoor_jobs)
-        print(f"Glassdoor: {len(glassdoor_jobs)} jobs")
-    except asyncio.TimeoutError:
-        print("Glassdoor: Timeout - skipping")
-    except Exception as e:
-        print(f"Error fetching Glassdoor: {e}")
+    if 'glassdoor' in portals:
+        print("Fetching from Glassdoor (Playwright)...")
+        try:
+            glassdoor_jobs = await asyncio.wait_for(fetch_glassdoor_jobs_playwright(search_role, "USA"), timeout=20)
+            all_jobs.extend(glassdoor_jobs)
+            print(f"Glassdoor: {len(glassdoor_jobs)} jobs")
+        except asyncio.TimeoutError:
+            print("Glassdoor: Timeout - skipping")
+        except Exception as e:
+            print(f"Error fetching Glassdoor: {e}")
     
     # Scrape from BuiltIn with timeout
-    print("Fetching from BuiltIn (Playwright)...")
-    try:
-        builtin_jobs = await asyncio.wait_for(fetch_builtin_jobs_playwright(search_role), timeout=20)
-        all_jobs.extend(builtin_jobs)
-        print(f"BuiltIn: {len(builtin_jobs)} jobs")
-    except asyncio.TimeoutError:
-        print("BuiltIn: Timeout - skipping")
-    except Exception as e:
-        print(f"Error fetching BuiltIn: {e}")
+    if 'builtin' in portals:
+        print("Fetching from BuiltIn (Playwright)...")
+        try:
+            builtin_jobs = await asyncio.wait_for(fetch_builtin_jobs_playwright(search_role), timeout=20)
+            all_jobs.extend(builtin_jobs)
+            print(f"BuiltIn: {len(builtin_jobs)} jobs")
+        except asyncio.TimeoutError:
+            print("BuiltIn: Timeout - skipping")
+        except Exception as e:
+            print(f"Error fetching BuiltIn: {e}")
     
     # Scrape from Greenhouse with timeout
-    print("Fetching from Greenhouse (Playwright)...")
-    try:
-        greenhouse_jobs = await asyncio.wait_for(fetch_greenhouse_jobs_playwright(custom_role=search_role), timeout=20)
-        all_jobs.extend(greenhouse_jobs)
-        print(f"Greenhouse: {len(greenhouse_jobs)} jobs")
-    except asyncio.TimeoutError:
-        print("Greenhouse: Timeout - skipping")
-    except Exception as e:
-        print(f"Error fetching Greenhouse: {e}")
+    if 'greenhouse' in portals:
+        print("Fetching from Greenhouse (Playwright)...")
+        try:
+            greenhouse_jobs = await asyncio.wait_for(fetch_greenhouse_jobs_playwright(custom_role=search_role), timeout=20)
+            all_jobs.extend(greenhouse_jobs)
+            print(f"Greenhouse: {len(greenhouse_jobs)} jobs")
+        except asyncio.TimeoutError:
+            print("Greenhouse: Timeout - skipping")
+        except Exception as e:
+            print(f"Error fetching Greenhouse: {e}")
     
     # Scrape from Lever with timeout
-    print("Fetching from Lever (Playwright)...")
-    try:
-        lever_jobs = await asyncio.wait_for(fetch_lever_jobs_playwright(custom_role=search_role), timeout=20)
-        all_jobs.extend(lever_jobs)
-        print(f"Lever: {len(lever_jobs)} jobs")
-    except asyncio.TimeoutError:
-        print("Lever: Timeout - skipping")
-    except Exception as e:
-        print(f"Error fetching Lever: {e}")
+    if 'lever' in portals:
+        print("Fetching from Lever (Playwright)...")
+        try:
+            lever_jobs = await asyncio.wait_for(fetch_lever_jobs_playwright(custom_role=search_role), timeout=20)
+            all_jobs.extend(lever_jobs)
+            print(f"Lever: {len(lever_jobs)} jobs")
+        except asyncio.TimeoutError:
+            print("Lever: Timeout - skipping")
+        except Exception as e:
+            print(f"Error fetching Lever: {e}")
     
     # Scrape from Workday with timeout
-    print("Fetching from Workday (Playwright)...")
-    try:
-        workday_jobs = await asyncio.wait_for(fetch_workday_jobs_playwright(custom_role=search_role), timeout=20)
-        all_jobs.extend(workday_jobs)
-        print(f"Workday: {len(workday_jobs)} jobs")
-    except asyncio.TimeoutError:
-        print("Workday: Timeout - skipping")
-    except Exception as e:
-        print(f"Error fetching Workday: {e}")
+    if 'workday' in portals:
+        print("Fetching from Workday (Playwright)...")
+        try:
+            workday_jobs = await asyncio.wait_for(fetch_workday_jobs_playwright(custom_role=search_role), timeout=20)
+            all_jobs.extend(workday_jobs)
+            print(f"Workday: {len(workday_jobs)} jobs")
+        except asyncio.TimeoutError:
+            print("Workday: Timeout - skipping")
+        except Exception as e:
+            print(f"Error fetching Workday: {e}")
+    
+    # Placeholder for other portals (to be implemented)
+    other_portals = ['ziprecruiter', 'careerbuilder', 'monster', 'smartrecruiters', 'successfactors',
+                     'flexjobs', 'weworkremotely', 'wellfound', 'dice', 'upwork', 'fiverr', 
+                     'freelancer', 'toptal', 'snagajob', 'handshake', 'usajobs', 'roberthalf',
+                     'simplyhired', 'linkup', 'idealist', 'ladders', 'craigslist']
+    
+    for portal in other_portals:
+        if portal in portals:
+            print(f"{portal}: Not yet implemented - skipping")
     
     print(f"Total jobs fetched: {len(all_jobs)}")
     return all_jobs
 
-def fetch_raw_jobs(custom_role: str = None) -> List[Dict]:
+def fetch_raw_jobs(custom_role: str = None, portals: List[str] = None) -> List[Dict]:
     """
     Synchronous wrapper for async fetch_raw_jobs_async
     Fetch jobs from multiple job portals
@@ -796,6 +833,7 @@ def fetch_raw_jobs(custom_role: str = None) -> List[Dict]:
     
     Args:
         custom_role: Optional custom role to search for (e.g., "Software Engineer")
+        portals: Optional list of portals to scrape (e.g., ['linkedin', 'indeed', 'glassdoor'])
     """
     try:
         loop = asyncio.get_event_loop()
@@ -804,7 +842,7 @@ def fetch_raw_jobs(custom_role: str = None) -> List[Dict]:
         asyncio.set_event_loop(loop)
     
     try:
-        jobs = loop.run_until_complete(fetch_raw_jobs_async(custom_role=custom_role))
+        jobs = loop.run_until_complete(fetch_raw_jobs_async(custom_role=custom_role, portals=portals))
         return jobs
     except Exception as e:
         print(f"Error in async job fetching: {e}")
@@ -935,13 +973,14 @@ def filter_and_rank_jobs(raw_jobs: List[Dict], custom_role: str = None) -> List[
     print(f"Filtered jobs matching criteria: {len(filtered_results)}")
     return filtered_results
 
-def run_full_search(custom_role: str = None) -> List[Dict]:
+def run_full_search(custom_role: str = None, portals: List[str] = None) -> List[Dict]:
     """Combines fetching and filtering into one function
     
     Args:
         custom_role: Optional custom role to search for (e.g., "Software Engineer")
+        portals: Optional list of portals to scrape (e.g., ['linkedin', 'indeed', 'glassdoor'])
     """
-    raw = fetch_raw_jobs(custom_role=custom_role)
+    raw = fetch_raw_jobs(custom_role=custom_role, portals=portals)
     return filter_and_rank_jobs(raw, custom_role=custom_role)
 
 # End of scraper_module.py

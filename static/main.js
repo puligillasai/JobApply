@@ -3,6 +3,27 @@
 let autoRefreshInterval = null;
 let currentCustomRole = null;
 
+// Portal selection handlers
+document.getElementById('selectAllPortals').addEventListener('click', () => {
+    document.querySelectorAll('.portal-checkbox input[type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = true;
+    });
+});
+
+document.getElementById('deselectAllPortals').addEventListener('click', () => {
+    document.querySelectorAll('.portal-checkbox input[type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+});
+
+function getSelectedPortals() {
+    const selected = [];
+    document.querySelectorAll('.portal-checkbox input[type="checkbox"]:checked').forEach(checkbox => {
+        selected.push(checkbox.value);
+    });
+    return selected;
+}
+
 document.getElementById('runSearchBtn').addEventListener('click', async () => {
     const resultsContainer = document.getElementById('resultsContainer');
     runSearchBtn.textContent = 'Searching...';
@@ -14,6 +35,9 @@ document.getElementById('runSearchBtn').addEventListener('click', async () => {
     updateSearchStatus('Searching for: DevOps Engineer, SRE, Cloud Engineer');
     currentCustomRole = null;
     
+    // Get selected portals
+    const selectedPortals = getSelectedPortals();
+    
     try {
         // --- THIS IS THE CRUCIAL PART: Talking to app.py ---
         const response = await fetch('/api/search', {
@@ -21,7 +45,9 @@ document.getElementById('runSearchBtn').addEventListener('click', async () => {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({}) // Empty body for default search
+            body: JSON.stringify({
+                portals: selectedPortals
+            }) // Send selected portals
         });
 
         if (!response.ok) {
@@ -64,13 +90,19 @@ document.getElementById('researchBtn').addEventListener('click', async () => {
     updateSearchStatus(`Searching for: ${customRole}`);
     document.getElementById('currentSearchRole').textContent = `Searching: ${customRole} (USA)`;
     
+    // Get selected portals
+    const selectedPortals = getSelectedPortals();
+    
     try {
         const response = await fetch('/api/search', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ custom_role: customRole })
+            body: JSON.stringify({
+                custom_role: customRole,
+                portals: selectedPortals
+            })
         });
 
         if (!response.ok) {
