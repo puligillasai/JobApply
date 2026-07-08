@@ -35,44 +35,182 @@ USER_PROFILE = {
 }
 
 def fetch_indeed_jobs(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
-    """Scrape jobs from Indeed"""
+    """Scrape jobs from Indeed using multiple selectors and URLs"""
     jobs = []
     try:
-        url = f"https://www.indeed.com/jobs?q={query}&l={location}&fromage=1"
-        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
+        # Try multiple Indeed URLs for better coverage
+        urls = [
+            f"https://www.indeed.com/jobs?q={query}&l={location}&fromage=1",
+            f"https://www.indeed.com/jobs?q={query}&l={location}&fromage=7",
+            f"https://www.indeed.com/jobs?q={query}&l={location}"
+        ]
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            job_cards = soup.find_all('div', class_='job_seen_beacon')
-            
-            for card in job_cards[:20]:  # Limit to first 20 jobs
-                try:
-                    title_elem = card.find('h2', class_='jobTitle')
-                    company_elem = card.find('span', {'data-testid': 'company-name'})
-                    location_elem = card.find('div', {'data-testid': 'text-location'})
-                    link_elem = card.find('a', class_='jcs-JobTitle')
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive'
+        }
+        
+        for url in urls:
+            try:
+                response = requests.get(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.content, 'html.parser')
                     
-                    if title_elem and company_elem:
-                        title = title_elem.get_text(strip=True)
-                        company = company_elem.get_text(strip=True)
-                        location = location_elem.get_text(strip=True) if location_elem else "Unknown"
-                        link = "https://www.indeed.com" + link_elem['href'] if link_elem else "#"
-                        
-                        jobs.append({
-                            'title': title,
-                            'company': company,
-                            'location': location,
-                            'url': link,
-                            'posted_date': datetime.datetime.now(),
-                            'source': 'Indeed'
-                        })
-                except Exception as e:
-                    print(f"Error parsing job card: {e}")
-                    continue
+                    # Try multiple selectors for job cards
+                    job_selectors = [
+                        ('div', 'job_seen_beacon'),
+                        ('div', 'jobCard'),
+                        ('div', 'slider_item'),
+                        ('li', 'css-1x7z1ps')
+                    ]
+                    
+                    job_cards = []
+                    for tag, class_name in job_selectors:
+                        cards = soup.find_all(tag, class_=class_name)
+                        if cards:
+                            job_cards = cards
+                            print(f"Indeed: Found {len(job_cards)} cards with {tag}.{class_name}")
+                            break
+                    
+                    for card in job_cards[:50]:  # Increased limit
+                        try:
+                            # Try multiple selectors for job details
+                            title_elem = card.find('h2', class_='jobTitle') or card.find('h2') or card.find('span', {'title': True})
+                            company_elem = card.find('span', {'data-testid': 'company-name'}) or card.find('span', class_='companyName')
+                            location_elem = card.find('div', {'data-testid': 'text-location'}) or card.find('div', class_='companyLocation')
+                            link_elem = card.find('a', class_='jcs-JobTitle') or card.find('a', href=True)
+                            
+                            if title_elem:
+                                title = title_elem.get_text(strip=True) if hasattr(title_elem, 'get_text') else title_elem.get('title', '')
+                                company = company_elem.get_text(strip=True) if company_elem else "Unknown"
+                                location = location_elem.get_text(strip=True) if location_elem else "Unknown"
+                                link = link_elem['href'] if link_elem else "#"
+                                
+                                # Ensure link is absolute
+                                if link and not link.startswith('http'):
+                                    if link.startswith('/'):
+                                        link = "https://www.indeed.com" + link
+                                    else:
+                                        link = "https://www.indeed.com/" + link
+                                
+                                # Avoid duplicates
+                                if not any(job['title'] == title and job['company'] == company for job in jobs):
+                                    jobs.append({
+                                        'title': title,
+                                        'company': company,
+                                        'location': location,
+                                        'url': link,
+                                        'posted_date': datetime.datetime.now(),
+                                        'source': 'Indeed'
+                                    })
+                        except Exception as e:
+                            print(f"Error parsing Indeed job card: {e}")
+                            continue
+            except Exception as e:
+                print(f"Error fetching Indeed from {url}: {e}")
+                continue
+                
     except Exception as e:
         print(f"Error scraping Indeed: {e}")
     
+    print(f"Indeed: Total {len(jobs)} unique jobs")
+    return jobs
+
+async def fetch_indeed_jobs_playwright(query: str = "DevOps Engineer", location: str = "USA") -> List[Dict]:
+    """Scrape jobs from Indeed using Playwright for dynamic content"""
+    jobs = []
+    browser = None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = await context.new_page()
+
+            # Indeed search URL with location and time filters
+            url = f"https://www.indeed.com/jobs?q={query}&l={location}&fromage=1"
+            
+            try:
+                await page.goto(url, timeout=30000, wait_until='networkidle')
+                await page.wait_for_timeout(3000)  # Wait for dynamic content
+
+                # Scroll down to load more jobs
+                for _ in range(5):
+                    await page.evaluate('window.scrollBy(0, 1000)')
+                    await page.wait_for_timeout(1000)
+
+                # Try multiple selectors for Indeed job cards
+                job_selectors = [
+                    'div.job_seen_beacon',
+                    'div.jobCard',
+                    'div.slider_item',
+                    'li.css-1x7z1ps'
+                ]
+
+                job_cards = []
+                for selector in job_selectors:
+                    try:
+                        cards = await page.query_selector_all(selector)
+                        if cards:
+                            job_cards = cards
+                            print(f"Indeed: Found {len(job_cards)} cards with selector: {selector}")
+                            break
+                    except:
+                        continue
+
+                # Extract jobs
+                for card in job_cards[:50]:
+                    try:
+                        # Try multiple selectors for job details
+                        title_elem = await card.query_selector('h2.jobTitle, h2, span[title]')
+                        company_elem = await card.query_selector('span[data-testid="company-name"], span.companyName')
+                        location_elem = await card.query_selector('div[data-testid="text-location"], div.companyLocation')
+                        link_elem = await card.query_selector('a.jcs-JobTitle, a[href]')
+
+                        if title_elem:
+                            title = await title_elem.evaluate('el => el.textContent || el.getAttribute("title") || ""')
+                            company = await company_elem.evaluate('el => el.textContent') if company_elem else "Unknown"
+                            location = await location_elem.evaluate('el => el.textContent') if location_elem else "Unknown"
+                            link = await link_elem.evaluate('el => el.getAttribute("href")') if link_elem else "#"
+                            
+                            # Ensure link is absolute
+                            if link and not link.startswith('http'):
+                                if link.startswith('/'):
+                                    link = "https://www.indeed.com" + link
+                                else:
+                                    link = "https://www.indeed.com/" + link
+                            
+                            jobs.append({
+                                'title': title.strip(),
+                                'company': company.strip(),
+                                'location': location.strip(),
+                                'url': link,
+                                'posted_date': datetime.datetime.now(),
+                                'source': 'Indeed'
+                            })
+                    except Exception as e:
+                        print(f"Error parsing Indeed job card: {e}")
+                        continue
+
+                print(f"Indeed: {len(jobs)} jobs extracted")
+
+            except PlaywrightTimeoutError:
+                print(f"Timeout loading Indeed page")
+            except Exception as e:
+                print(f"Error navigating to Indeed: {e}")
+            finally:
+                if browser:
+                    await browser.close()
+
+    except Exception as e:
+        print(f"Error in Indeed Playwright scraper: {e}")
+
     return jobs
 
 def fetch_linkedin_jobs(query: str = "DevOps Engineer") -> List[Dict]:
@@ -742,13 +880,15 @@ async def fetch_raw_jobs_async(custom_role: str = None, portals: List[str] = Non
         except Exception as e:
             print(f"Error fetching LinkedIn: {e}")
     
-    # Scrape from Indeed
+    # Scrape from Indeed with Playwright
     if 'indeed' in portals:
-        print("Fetching from Indeed...")
+        print("Fetching from Indeed (Playwright)...")
         try:
-            indeed_jobs = fetch_indeed_jobs(search_role, "USA")
+            indeed_jobs = await asyncio.wait_for(fetch_indeed_jobs_playwright(search_role, "USA"), timeout=25)
             all_jobs.extend(indeed_jobs)
             print(f"Indeed: {len(indeed_jobs)} jobs")
+        except asyncio.TimeoutError:
+            print("Indeed: Timeout - skipping")
         except Exception as e:
             print(f"Error fetching Indeed: {e}")
     
