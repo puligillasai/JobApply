@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-07-09T01:33:16.166Z",
+  "projectRoot": "/Users/saisumanthpuligilla/Downloads/Jobapply",
+  "structure": {
+    "hasPackageJson": false,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1783560796166
+}
