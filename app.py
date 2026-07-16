@@ -1,8 +1,9 @@
 # app.py - The Main Server File
 from flask import Flask, render_template, jsonify, request
-from scraper_module import run_full_search # Importing your agent logic
+from scraper_module import SUPPORTED_PORTALS, run_full_search
 
 app = Flask(__name__)
+MAX_CUSTOM_ROLE_LENGTH = 80
 
 # -------------------------------------------
 # ROUTE 1: The initial webpage (When the user visits the site)
@@ -17,10 +18,34 @@ def home():
 def search_endpoint():
     """ Accepts criteria from the frontend and returns ranked jobs. """
     
-    # 1. Get Criteria (Optional: If you add filters like 'only SRE')
-    data = request.get_json()
-    custom_role = data.get('custom_role') if data else None
-    selected_portals = data.get('portals') if data else None
+    data = request.get_json(silent=True) or {}
+    custom_role = data.get('custom_role')
+    selected_portals = data.get('portals')
+
+    if custom_role is not None:
+        if not isinstance(custom_role, str):
+            return jsonify({"error": "custom_role must be text."}), 400
+        custom_role = custom_role.strip()
+        if not custom_role:
+            custom_role = None
+        elif len(custom_role) > MAX_CUSTOM_ROLE_LENGTH:
+            return jsonify({"error": "custom_role is too long."}), 400
+
+    if selected_portals is not None:
+        if not isinstance(selected_portals, list) or not all(isinstance(portal, str) for portal in selected_portals):
+            return jsonify({"error": "portals must be a list of supported portal names."}), 400
+        if not selected_portals:
+            return jsonify({"error": "At least one supported portal is required."}), 400
+
+        unsupported = sorted(set(selected_portals) - set(SUPPORTED_PORTALS))
+        if unsupported:
+            return jsonify({
+                "error": "Unsupported portals requested.",
+                "unsupported_portals": unsupported,
+                "supported_portals": SUPPORTED_PORTALS
+            }), 400
+
+        selected_portals = list(dict.fromkeys(selected_portals))
 
     # 2. Run the Agent/Scraper
     try:
@@ -34,4 +59,5 @@ def search_endpoint():
 
 if __name__ == '__main__':
     # When running locally for testing:
-    app.run(debug=True, port=5001) 
+    # debug=False for security (prevents arbitrary code execution in production)
+    app.run(debug=False, port=5001) 
